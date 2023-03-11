@@ -10,11 +10,12 @@ from tqdm import tqdm
 from collections import deque
 import pandas as pd
 import time
+
 from utils import play_game, play_game2
 from game_environment import Snake, SnakeNumpy
 import tensorflow as tf
-from agent import DeepQLearningAgent, PolicyGradientAgent,\
-                AdvantageActorCriticAgent, mean_huber_loss
+from agent import DeepQLearningAgent, PolicyGradientAgent, \
+    AdvantageActorCriticAgent, mean_huber_loss, DeepQLearningAgentTorch
 import json
 
 # some global variables
@@ -38,15 +39,16 @@ log_frequency = 500
 games_eval = 8
 
 # setup the agent
-agent = DeepQLearningAgent(board_size=board_size, frames=frames, n_actions=n_actions, 
-                           buffer_size=buffer_size, version=version)
-# agent = PolicyGradientAgent(board_size=board_size, frames=frames, n_actions=n_actions, 
+agent = DeepQLearningAgentTorch(board_size= board_size, frames=frames, n_actions=n_actions, use_target_net=True, version=version)
+# agent = PolicyGradientAgent(board_size=board_size, frames=frames, n_actions=n_actions,
         # buffer_size=2000, version=version)
 # agent = AdvantageActorCriticAgent(board_size=board_size, frames=frames, n_actions=n_actions, 
                                   # buffer_size=10000, version=version)
 # agent.print_models()
 
 # check in the same order as class hierarchy
+if(isinstance(agent, DeepQLearningAgentTorch)):
+    agent_type = 'DeepQLearningAgentTorch'
 if(isinstance(agent, DeepQLearningAgent)):
     agent_type = 'DeepQLearningAgent'
 if(isinstance(agent, PolicyGradientAgent)):
@@ -57,6 +59,14 @@ print('Agent is {:s}'.format(agent_type))
 
 # setup the epsilon range and decay rate for epsilon
 # define rewrad type and update frequency, see utils for more details
+if(agent_type in ['PyTorchDQNAgent']):
+    epsilon, epsilon_end = 1, 0.01
+    reward_type = 'current'
+    sample_actions = False
+    n_games_training = 8 * 16
+    decay = 0.97
+
+
 if(agent_type in ['DeepQLearningAgent']):
     epsilon, epsilon_end = 1, 0.01
     reward_type = 'current'
@@ -70,13 +80,14 @@ if(agent_type in ['DeepQLearningAgent']):
         # or some other pretrained model
         agent.load_model(file_path='models/{:s}'.format(version))
         # agent.set_weights_trainable()
-if(agent_type in ['PolicyGradientAgent']):
-    epsilon, epsilon_end = -1, -1
-    reward_type = 'discounted_future'
-    sample_actions = True
-    exploration_threshold = 0.1
-    n_games_training = 16
-    decay = 1
+
+if(agent_type in ['DeepQLearningAgentTorch']):
+    epsilon, epsilon_end = 1, 0.01
+    reward_type = 'current'
+    sample_actions = False
+    n_games_training = 8 * 16
+    decay = 0.97
+
 if(agent_type in ['AdvantageActorCriticAgent']):
     epsilon, epsilon_end = -1, -1
     reward_type = 'current'
@@ -88,8 +99,9 @@ if(agent_type in ['AdvantageActorCriticAgent']):
 # decay = np.exp(np.log((epsilon_end/epsilon))/episodes)
 
 # use only for DeepQLearningAgent
-if(agent_type in ['DeepQLearningAgent']):
+if(agent_type in ['DeepQLearningAgentTorch']):
     # play some games initially to fill the buffer
+
     # or load from an existing buffer (supervised)
     if(supervised):
         try:
@@ -119,6 +131,16 @@ env2 = SnakeNumpy(board_size=board_size, frames=frames,
 model_logs = {'iteration':[], 'reward_mean':[],
               'length_mean':[], 'games':[], 'loss':[]}
 for index in tqdm(range(episodes)):
+    if (agent_type in ['DeepQLearningAgentTorch']):
+        # make small changes to the buffer and slowly train
+        _, _, _ = play_game2(env, agent, n_actions, epsilon=epsilon,
+                             n_games=n_games_training, record=True,
+                             sample_actions=sample_actions, reward_type=reward_type,
+                             frame_mode=True, total_frames=n_games_training,
+                             stateful=True)
+        loss = agent.train_agent(batch_size=64,
+                                 num_games=n_games_training, reward_clip=True)
+
     if(agent_type in ['DeepQLearningAgent']):
         # make small changes to the buffer and slowly train
         _, _, _ = play_game2(env, agent, n_actions, epsilon=epsilon,
@@ -162,6 +184,6 @@ for index in tqdm(range(episodes)):
     # copy weights to target network and save models
     if((index+1)%log_frequency == 0):
         agent.update_target_net()
-        agent.save_model(file_path='models/{:s}'.format(version), iteration=(index+1))
+        agent.save_model(file_path='models_torch/{:s}'.format(version), iteration=(index+1))
         # keep some epsilon alive for training
         epsilon = max(epsilon * decay, epsilon_end)

@@ -1,0 +1,35 @@
+{
+  "model": {
+    "conv1": {
+      "in_channels": 16,
+      "out_channels": 32,
+      "kernel_size": 8,
+      "stride": 4
+    },
+    "relu1": {},
+    "conv2": {
+      "in_channels": 32,
+      "out_channels": 64,
+      "kernel_size": 4,
+      "stride": 2
+    },
+    "relu2": {},
+    "conv3": {
+      "in_channels": 64,
+      "out_channels": 64,
+      "kernel_size": 3,
+      "stride": 1
+    },
+    "relu3": {},
+    "flatten": {},
+    "dense1": {
+      "in_features": 3136,
+      "out_features": 512
+    },
+    "relu4": {},
+    "dense2": {
+      "in_features": 512,
+      "out_features": 4
+    }
+  }
+}
