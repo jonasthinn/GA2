@@ -23,20 +23,14 @@ class CNN(torch.nn.Module):
         x = self.conv1(x)
         x = self.relu1(x)
 
-        # print("conv1")
-        # print(x.shape)
+
 
         x = self.conv2(x)
         x = self.relu2(x)
 
-        # print("conv2")
-        # print(x.shape)
-
         x = self.conv3(x)
         x = self.relu3(x)
 
-        # print("conv3")
-        # print(x.shape)
 
         x = self.flatten(x)
         # print("flatten")

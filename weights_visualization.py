@@ -1,5 +1,5 @@
 import numpy as np
-from agent import DeepQLearningAgent, BreadthFirstSearchAgent, DeepQLearningAgentTorch
+from agent import DeepQLearningAgent, BreadthFirstSearchAgent
 from game_environment import Snake
 import matplotlib.pyplot as plt
 from tensorflow.keras import Model
@@ -25,7 +25,7 @@ max_time_limit = -1
 env = Snake(board_size=board_size, frames=frames, max_time_limit=max_time_limit)
 s = env.reset()
 # setup the agent
-agent = DeepQLearningAgentTorch(board_size=board_size, frames=frames, n_actions=n_actions,
+agent = DeepQLearningAgent(board_size=board_size, frames=frames, n_actions=n_actions,
                            buffer_size=1, version=version)
 
 # load weights into the agent
@@ -55,7 +55,7 @@ fig, axs = plt.subplots(nrows, ncols, figsize=(17, 17))
 for i in range(nrows):
     for j in range(ncols):
         axs[i][j].imshow(w[:, :, j%2, i*(ncols//2)+(j//2)], cmap='gray')
-fig.savefig('images2/weight_visual_{:s}_{:04d}_conv{:d}.png'\
+fig.savefig('images/weight_visual_{:s}_{:04d}_conv{:d}.png'\
             .format(version, iteration, layer_num), 
             dpi=72, bbox_inches='tight')
 # sys.exit()
