@@ -630,7 +630,6 @@ class PolicyGradientAgentTorch(DeepQLearningAgentTorch):
         self._model = self._agent_model()
         self._learning_rate = 0.001
         self._device = torch.device('cpu')
-        self._optimizer = torch.optim.Adam(self._model.parameters(), self._learning_rate)
         if (self._use_target_net):
             self._target_net = self._agent_model()
             self.update_target_net()
@@ -700,29 +699,11 @@ class AdvantageActorCriticAgentTorch(PolicyGradientAgentTorch):
                                                         version=version)
 
     def _agent_model(self):
-        conv1 = nn.Conv2d(2, 16, kernel_size=3, stride=1, padding=1)
-        conv2 = nn.Conv2d(16, 32, kernel_size=3, stride=1, padding=1)
-        conv3 = nn.Conv2d(32, 64, kernel_size=3, stride=1, padding=1)
-        fc1 = nn.Linear(64 * 10 * 10, 512)
-        actor = nn.Linear(512, self._n_actions)
-        critic = nn.Linear(512, 1)
-        return nn.Sequential(
-            conv1,
-            nn.ReLU(),
-            conv2,
-            nn.ReLU(),
-            conv3,
-            nn.ReLU(),
-            nn.Flatten(),
-            fc1,
-            nn.ReLU(),
-            actor,
-            nn.Softmax(dim=-1),
-            critic
-        )
+        model = cnn.AACN
+        return model
 
     def _actor_critic_agent_model(self):
-        model = cnn.CNN()
+        model = cnn.AACN()
         model.fc_actor = nn.Linear(1280, self._n_actions)
         model.fc_critic = nn.Linear(1280, 1)
         return model

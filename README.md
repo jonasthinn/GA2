@@ -5,8 +5,7 @@ The agent takes 2 frames of the game as input (image) and predicts the action va
 the next action to take. The task was to translate the code from TensorFlow to PyTorch
 ***
 Sample games from the best performing [agent](../models/v15.1/model_188000.h5)<br>
-<img width="400" height="400" src="https://github.com/DragonWarrior15/snake-rl/blob/master/images/game_visual_v15.1_188000_1.gif" alt="model v15.1 agent" ><img width="400" height="400" src="https://github.com/DragonWarrior15/snake-rl/blob/master/images/game_visual_v15.1_188000_5.gif" alt="model v15.1 agent" >
-<img width="400" height="400" src="https://github.com/DragonWarrior15/snake-rl/blob/master/images/game_visual_v15.1_188000_6.gif" alt="model v15.1 agent" ><img width="400" height="400" src="https://github.com/DragonWarrior15/snake-rl/blob/master/images/game_visual_v15.1_188000_11.gif" alt="model v15.1 agent" >
+<img width="400" height="400" src="https://github.com/jonasthinn/GA2/blob/main/images2/game_visual_v17.1_199000_14_ob_0.gif" alt="model v17.1 agent" ><
 ***
 
 ## Code Structure
