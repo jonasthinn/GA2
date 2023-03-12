@@ -39,12 +39,12 @@ log_frequency = 500
 games_eval = 8
 
 # setup the agent
-#agent = DeepQLearningAgentTorch(board_size= board_size, frames=frames, n_actions=n_actions, use_target_net=True, version=version)
+agent = DeepQLearningAgentTorch(board_size= board_size, frames=frames, n_actions=n_actions, use_target_net=True, version=version)
 #agent = DeepQLearningAgent(board_size=board_size, frames=frames, n_actions=n_actions, buffer_size=2000, version=version)
 # agent = PolicyGradientAgentTorch(board_size=board_size, frames=frames, n_actions=n_actions,
         # buffer_size=2000, version=version)
-agent = AdvantageActorCriticAgentTorch(board_size=board_size, frames=frames, n_actions=n_actions,
-                                  buffer_size=10000, version=version)
+#agent = AdvantageActorCriticAgentTorch(board_size=board_size, frames=frames, n_actions=n_actions,
+                                #  buffer_size=10000, version=version)
 # agent.print_models()
 
 # check in the same order as class hierarchy
