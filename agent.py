@@ -636,7 +636,7 @@ class PolicyGradientAgentTorch(DeepQLearningAgentTorch):
             self.update_target_net()
 
     def _agent_model(self):
-        model = awd.CNN()
+        model = cnn.CNN()
         model.fc = nn.Linear(1280, self._n_actions)
         return model
 
@@ -700,7 +700,7 @@ class AdvantageActorCriticAgentTorch(PolicyGradientAgentTorch):
                                                         version=version)
 
     def _agent_model(self):
-        conv1 = nn.Conv2d(self._frames, 16, kernel_size=3, stride=1, padding=1)
+        conv1 = nn.Conv2d(2, 16, kernel_size=3, stride=1, padding=1)
         conv2 = nn.Conv2d(16, 32, kernel_size=3, stride=1, padding=1)
         conv3 = nn.Conv2d(32, 64, kernel_size=3, stride=1, padding=1)
         fc1 = nn.Linear(64 * 10 * 10, 512)
@@ -722,7 +722,7 @@ class AdvantageActorCriticAgentTorch(PolicyGradientAgentTorch):
         )
 
     def _actor_critic_agent_model(self):
-        model = awd.CNN()
+        model = cnn.CNN()
         model.fc_actor = nn.Linear(1280, self._n_actions)
         model.fc_critic = nn.Linear(1280, 1)
         return model
