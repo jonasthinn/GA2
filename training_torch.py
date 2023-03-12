@@ -1,7 +1,7 @@
 
 import time
 
-from awd import PyTorchDQNAgent
+from cnn import PyTorchDQNAgent
 from utils import play_game, play_game2
 from game_environment import Snake, SnakeNumpy
 import numpy as np

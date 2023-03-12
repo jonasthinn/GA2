@@ -2,7 +2,7 @@
 # useful to study different iterations
 
 import numpy as np
-from agent import DeepQLearningAgentTorch, PolicyGradientAgent, \
+from agent import DeepQLearningAgentTorch,  \
         AdvantageActorCriticAgent, HamiltonianCycleAgent, BreadthFirstSearchAgent
 from game_environment import Snake, SnakeNumpy
 from utils import visualize_game
@@ -21,19 +21,19 @@ with open('model_config/{:s}.json'.format(version), 'r') as f:
     n_actions = m['n_actions']
     obstacles = bool(m['obstacles'])
 
-iteration_list = [9000]
+iteration_list = [199000]
 max_time_limit = 398
 
 # setup the environment
 env = Snake(board_size=board_size, frames=frames, max_time_limit=max_time_limit,
-            obstacles=obstacles, version=version)
+            obstacles=0, version=version)
 s = env.reset()
 n_actions = env.get_num_actions()
 
 # setup the agent
 # K.clear_session()
 agent = DeepQLearningAgentTorch(board_size=board_size, frames=frames,
-                           n_actions=n_actions, buffer_size=10, version=version)
+                           n_actions=n_actions,  version=version)
 # agent = PolicyGradientAgent(board_size=board_size, frames=frames, n_actions=n_actions, buffer_size=10)
 # agent = AdvantageActorCriticAgent(board_size=board_size, frames=frames, n_actions=n_actions, buffer_size=10)
 # agent = HamiltonianCycleAgent(board_size=board_size, frames=frames, n_actions=n_actions, buffer_size=10)
@@ -44,5 +44,5 @@ for iteration in iteration_list:
     
     for i in range(5):
         visualize_game(env, agent,
-            path='images/game_visual_{:s}_{:d}_14_ob_{:d}.mp4'.format(version, iteration, i),
+            path='images2/game_visual_{:s}_{:d}_14_ob_{:d}.mp4'.format(version, iteration, i),
             debug=False, animate=True, fps=12)

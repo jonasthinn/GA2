@@ -14,8 +14,8 @@ import time
 from utils import play_game, play_game2
 from game_environment import Snake, SnakeNumpy
 import tensorflow as tf
-from agent import DeepQLearningAgent, PolicyGradientAgent, \
-    AdvantageActorCriticAgent, mean_huber_loss, DeepQLearningAgentTorch
+from agent import DeepQLearningAgent, PolicyGradientAgentTorch, \
+    AdvantageActorCriticAgentTorch, mean_huber_loss, DeepQLearningAgentTorch
 import json
 
 # some global variables
@@ -39,11 +39,12 @@ log_frequency = 500
 games_eval = 8
 
 # setup the agent
-agent = DeepQLearningAgentTorch(board_size= board_size, frames=frames, n_actions=n_actions, use_target_net=True, version=version)
-# agent = PolicyGradientAgent(board_size=board_size, frames=frames, n_actions=n_actions,
+#agent = DeepQLearningAgentTorch(board_size= board_size, frames=frames, n_actions=n_actions, use_target_net=True, version=version)
+#agent = DeepQLearningAgent(board_size=board_size, frames=frames, n_actions=n_actions, buffer_size=2000, version=version)
+# agent = PolicyGradientAgentTorch(board_size=board_size, frames=frames, n_actions=n_actions,
         # buffer_size=2000, version=version)
-# agent = AdvantageActorCriticAgent(board_size=board_size, frames=frames, n_actions=n_actions, 
-                                  # buffer_size=10000, version=version)
+agent = AdvantageActorCriticAgentTorch(board_size=board_size, frames=frames, n_actions=n_actions,
+                                  buffer_size=10000, version=version)
 # agent.print_models()
 
 # check in the same order as class hierarchy
@@ -51,9 +52,9 @@ if(isinstance(agent, DeepQLearningAgentTorch)):
     agent_type = 'DeepQLearningAgentTorch'
 if(isinstance(agent, DeepQLearningAgent)):
     agent_type = 'DeepQLearningAgent'
-if(isinstance(agent, PolicyGradientAgent)):
+if(isinstance(agent, PolicyGradientAgentTorch)):
     agent_type = 'PolicyGradientAgent'
-if(isinstance(agent, AdvantageActorCriticAgent)):
+if(isinstance(agent, AdvantageActorCriticAgentTorch)):
     agent_type = 'AdvantageActorCriticAgent'
 print('Agent is {:s}'.format(agent_type))
 
@@ -73,6 +74,7 @@ if(agent_type in ['DeepQLearningAgent']):
     sample_actions = False
     n_games_training = 8*16
     decay = 0.97
+    print(agent.print_models())
     if(supervised):
         # lower the epsilon since some starting policy has already been trained
         epsilon = 0.01
@@ -82,7 +84,7 @@ if(agent_type in ['DeepQLearningAgent']):
         # agent.set_weights_trainable()
 
 if(agent_type in ['DeepQLearningAgentTorch']):
-    epsilon, epsilon_end = 1, 0.01
+    epsilon, epsilon_end = 0.1, 0.01
     reward_type = 'current'
     sample_actions = False
     n_games_training = 8 * 16
@@ -119,7 +121,7 @@ if(agent_type in ['DeepQLearningAgentTorch']):
                        epsilon=epsilon, verbose=True, reset_seed=False,
                        frame_mode=True, total_frames=games*64)
         print('Playing {:d} frames took {:.2f}s'.format(games*64, time.time()-ct))
-
+print(obstacles)
 env = SnakeNumpy(board_size=board_size, frames=frames, 
             max_time_limit=max_time_limit, games=n_games_training,
             frame_mode=True, obstacles=obstacles, version=version)

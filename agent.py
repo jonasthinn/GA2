@@ -7,8 +7,7 @@ import torch.nn.functional as F
 import numpy as np
 import json
 
-
-import awd
+import cnn
 from replay_buffer import ReplayBuffer, ReplayBufferNumpy
 import numpy as np
 import time
@@ -176,6 +175,7 @@ class DeepQLearningAgent(Agent):
         if (board.ndim == 3):
             board = board.reshape((1,) + self._input_shape)
         board = self._normalize_board(board.copy())
+
         return board.copy()
 
     def _get_model_outputs(self, board, model=None):
@@ -450,9 +450,6 @@ class DeepQLearningAgent(Agent):
         self._target_net.set_weights(agent_for_copy._model_pred.get_weights())
 
 
-
-
-
 class DeepQLearningAgentTorch(Agent):
 
     def __init__(self, board_size=10, frames=4, buffer_size=10000,
@@ -466,8 +463,8 @@ class DeepQLearningAgentTorch(Agent):
     def reset_models(self):
         self._model = self._agent_model()
         self._learning_rate = 0.001
-        self._device = torch.device('cuda')
-        self._optimizer = torch.optim.Adam(self._model.parameters())
+        self._device = torch.device('cpu')
+        self._optimizer = torch.optim.Adam(self._model.parameters(), self._learning_rate)
         if (self._use_target_net):
             self._target_net = self._agent_model()
             self.update_target_net()
@@ -481,18 +478,10 @@ class DeepQLearningAgentTorch(Agent):
             self._target_net.load_state_dict(self._model.state_dict())
 
     def _prepare_input(self, board):
-        # convert to float32
-        board = board.astype(np.float32)
-        # normalize
-        board /= 255.0
-        # add channel dimension
-        board = np.expand_dims(board, axis=-1)
-        # remove the extra dimension
-        board = np.squeeze(board, axis=-1)
-        # transpose to [batch_size, in_channels, height, width]
-        print(board.shape)
-        board = np.transpose(board, (0, 3, 1, 2))
-        return board
+        if (board.ndim == 3):
+            board = board.reshape((1,) + self._input_shape)
+        board = self._normalize_board(board.copy())
+        return board.copy()
 
     def get_action_proba(self, board, values=None):
         """Returns the action probability values using the DQN model
@@ -516,8 +505,7 @@ class DeepQLearningAgentTorch(Agent):
         model_outputs = model_outputs - model_outputs.max(axis=1).reshape((-1, 1))
         model_outputs = np.exp(model_outputs)
         model_outputs = model_outputs / model_outputs.sum(axis=1).reshape((-1, 1))
-
-        return model_outputs
+        return model_outputs.numpy()
 
     def _get_model_outputs(self, board, model=None):
         """Get action values from the DQN model
@@ -544,91 +532,54 @@ class DeepQLearningAgentTorch(Agent):
         with torch.no_grad():
             model.eval()
             model_outputs = model.forward(board_tensor)
-
-        return model_outputs
-
-    # def _get_model_outputs(self, board, model=None):
-    #     # board = self._prepare_input(board)
-    #     # if model is None:
-    #     #     model = self._model
-    #     # board_tensor = torch.from_numpy(board).float().unsqueeze(0)
-    #     # model_outputs = model(board_tensor)
-    #     # return model_outputs.detach().numpy().reshape((-1,))
+        return model_outputs.numpy()
 
     def _normalize_board(self, board):
+        if type(board) == torch.Tensor:
+            print("hei")
+            board = board.numpy()
         return board.astype(np.float32) / 4.0
 
     def move(self, board, legal_moves, value=None):
         model_outputs = self._get_model_outputs(board, self._model)
         return np.argmax(np.where(legal_moves == 1, model_outputs, -np.inf), axis=1)
-        # model_outputs = self._get_model_outputs(board, self._model)
-        #
-        # legal_moves = torch.from_numpy(legal_moves.astype(np.float32))
-        # masked_outputs = torch.where(legal_moves == 1, torch.from_numpy(model_outputs.detach().numpy()), torch.tensor(float('-inf')))
-        # return torch.argmax(masked_outputs).item()
 
     def _agent_model(self):
-        model = awd.CNN()
-        # model.float()
+        model = cnn.CNN()
         return model
-        # with open('model_config/{:s}.json'.format(self._version), 'r') as f:
-        #     m = json.loads(f.read())
-        # layers = []
-        # in_channels = self._n_frames
-        # for layer in m['model']:
-        #     l = m['model'][layer]
-        #     if ('Conv2D' in layer):
-        #         print("hei")
-        #         layers.append(nn.Conv2d(in_channels=in_channels, **l))
-        #         in_channels = l['out_channels']
-        #     if ('Flatten' in layer):
-        #         layers.append(nn.Flatten())
-        #     if ('Dense' in layer):
-        #         layers.append(nn.Linear(**l))
-        #         layers.append(nn.ReLU())
-        # layers.append(nn.Linear(in_features=in_channels, out_features=self._n_actions))
-        # model = nn.Sequential(*layers)
-        # loss_fn = nn.SmoothL1Loss()
-        # optimizer = torch.optim.RMSprop(model.parameters(), lr=0.0005)
-        # print(model.parameters())
-        # model = model.float()
-        # return model
 
     def set_weights_trainable(self):
         for param in self._model.parameters():
             param.requires_grad = True
 
     def train_agent(self, batch_size=32, num_games=1, reward_clip=False):
-
-
         s, a, r, next_s, done, legal_moves = self._buffer.sample(batch_size)
         if (reward_clip):
             r = np.sign(r)
         # calculate the discounted reward, and then train accordingly
         current_model = self._target_net if self._use_target_net else self._model
         next_model_outputs = self._get_model_outputs(next_s, current_model)
-        # our estimate of expexted future discounted reward
+        # our estimate of expected future discounted reward
         discounted_reward = r + \
                             (self._gamma * np.max(np.where(legal_moves == 1, next_model_outputs, -np.inf),
                                                   axis=1) \
                              .reshape(-1, 1)) * (1 - done)
         # create the target variable, only the column with action has different value
-        target = self._get_model_outputs(s)
+        target = torch.tensor(self._get_model_outputs(s), dtype=torch.float32, device=self._device, requires_grad=True)
         # we bother only with the difference in reward estimate at the selected action
         target = (1 - torch.from_numpy(a)) * target + torch.from_numpy(a) * discounted_reward
 
         # fit
-        criterion = nn.CrossEntropyLoss()
-        optimizer = torch.optim.Adam(self._model.parameters(), lr=self._learning_rate)
-        loss_fn = nn.SmoothL1Loss()
+        criterion = nn.SmoothL1Loss()
+        optimizer = self._optimizer
         optimizer.zero_grad()
-        loss = criterion(next_model_outputs.detach().clone(), target.detach().clone())
-        # loss = loss_fn(self._model(self._normalize_board(torch.from_numpy(s).to(self._device))),
-                   #   torch.tensor(target, dtype=torch.float32, device=self._device))
-        # loss.backward()
+        # compute the loss
+        predicted_q_values = self._model(torch.from_numpy(self._normalize_board(s)))
+        loss = criterion(predicted_q_values, torch.as_tensor(target, dtype=torch.float32, device=self._device))
+        loss.backward()
         optimizer.step()
 
-        return loss
+        return loss.item()
 
     def save_model(self, file_path='', iteration=None):
         """Save the current models to disk using PyTorch's
@@ -665,366 +616,175 @@ class DeepQLearningAgentTorch(Agent):
         except FileNotFoundError:
             print("Couldn't locate models at {}, check provided path".format(file_path))
 
-class PolicyGradientAgent(DeepQLearningAgentTorch):
-    """This agent learns via Policy Gradient method
 
-    Attributes
-    ----------
-    _update_function : function
-        defines the policy update function to use while training
-    """
-
-    def __init__(self, board_size=10, frames=4, buffer_size=10000,
-                 gamma=0.99, n_actions=3, use_target_net=False,
-                 version=''):
-        """Initializer for PolicyGradientAgent, similar to DeepQLearningAgent
-        but does an extra assignment to the training function
-        """
-        DeepQLearningAgent.__init__(self, board_size=board_size, frames=frames,
-                                    buffer_size=buffer_size, gamma=gamma,
-                                    n_actions=n_actions, use_target_net=False,
-                                    version=version)
-        self._actor_optimizer = torch.optim.Adam(self._model.parameters(), lr=1e-6)
-
-    def _agent_model(self):
-        """Returns the model which evaluates prob values for a given state input
-        Model is compiled in a different function
-        Overrides parent
-
-        Returns
-        -------
-        model : PyTorch model
-            Policy Gradient model graph
-        """
-        model = nn.Sequential(
-            nn.Conv2d(self._n_frames, 16, kernel_size=4, stride=1, padding=0),
-            nn.ReLU(),
-            nn.Conv2d(16, 32, kernel_size=4, stride=1, padding=0),
-            nn.ReLU(),
-            nn.Flatten(),
-            nn.Linear(32 * (self._board_size - 3) * (self._board_size - 3), 64),
-            nn.ReLU(),
-            nn.Linear(64, self._n_actions)
-        )
-        return model
-
-    def train_agent(self, batch_size=32, beta=0.1, normalize_rewards=False,
-                    num_games=1, reward_clip=False):
-        """Train the model by sampling from buffer and return the error
-        The buffer is assumed to contain all states of a finite set of games
-        and is fully sampled from the buffer
-        Overrides parent
-
-        Parameters
-        ----------
-        batch_size : int, optional
-            Not used here, kept for consistency with other agents
-        beta : float, optional
-            The weight for the entropy loss
-        normalize_rewards : bool, optional
-            Whether to normalize rewards for stable training
-        num_games : int, optional
-            Total games played in the current batch
-        reward_clip : bool, optional
-            Not used here, kept for consistency with other agents
-
-        Returns
-        -------
-        error : list
-            The current loss (total loss, classification loss, entropy)
-        """
-        # in policy gradient, only complete episodes are used for training
-        s, a, r, _, _, _ = self._buffer.sample(self._buffer.get_current_size())
-        s = self._prepare_input(s)
-        a = torch.from_numpy(a).long()
-        r = torch.from_numpy(r).float()
-        if normalize_rewards:
-            r = (r - r.mean()) / (r.std() + 1e-8)
-        # compute the log probabilities of the actions taken
-        action_logits = self._model(s)
-        action_probs = nn.functional.softmax(action_logits, dim=1)
-        dist = Categorical(probs=action_probs)
-        log_probs = dist.log_prob(a)
-        # compute the loss and update the model
-        actor_loss = -log_probs * r
-        entropy_loss = -dist.entropy()
-
-
-class PolicyGradientAgent(DeepQLearningAgent):
-    """This agent learns via Policy Gradient method
-
-    Attributes
-    ----------
-    _update_function : function
-        defines the policy update function to use while training
-    """
-
-    def __init__(self, board_size=10, frames=4, buffer_size=10000,
-                 gamma=0.99, n_actions=3, use_target_net=False,
-                 version=''):
-        """Initializer for PolicyGradientAgent, similar to DeepQLearningAgent
-        but does an extra assignment to the training function
-        """
-        DeepQLearningAgent.__init__(self, board_size=board_size, frames=frames,
-                                    buffer_size=buffer_size, gamma=gamma,
-                                    n_actions=n_actions, use_target_net=False,
-                                    version=version)
-        self._actor_optimizer = tf.keras.optimizer.Adam(1e-6)
-
-    def _agent_model(self):
-        """Returns the model which evaluates prob values for a given state input
-        Model is compiled in a different function
-        Overrides parent
-        
-        Returns
-        -------
-        model : TensorFlow Graph
-            Policy Gradient model graph
-        """
-        input_board = Input((self._board_size, self._board_size, self._n_frames,))
-        x = Conv2D(16, (4, 4), activation='relu', data_format='channels_last', kernel_regularizer=l2(0.01))(input_board)
-        x = Conv2D(32, (4, 4), activation='relu', data_format='channels_last', kernel_regularizer=l2(0.01))(x)
-        x = Flatten()(x)
-        x = Dense(64, activation='relu', kernel_regularizer=l2(0.01))(x)
-        out = Dense(self._n_actions, activation='linear', name='action_logits', kernel_regularizer=l2(0.01))(x)
-
-        model = Model(inputs=input_board, outputs=out)
-        # do not compile the model here, but rather use the outputs separately
-        # in a training function to create any custom loss function
-        # model.compile(optimizer = RMSprop(0.0005), loss = 'mean_squared_error')
-        return model
-
-    def train_agent(self, batch_size=32, beta=0.1, normalize_rewards=False,
-                    num_games=1, reward_clip=False):
-        """Train the model by sampling from buffer and return the error
-        The buffer is assumed to contain all states of a finite set of games
-        and is fully sampled from the buffer
-        Overrides parent
-        
-        Parameters
-        ----------
-        batch_size : int, optional
-            Not used here, kept for consistency with other agents
-        beta : float, optional
-            The weight for the entropy loss
-        normalize_rewards : bool, optional
-            Whether to normalize rewards for stable training
-        num_games : int, optional
-            Total games played in the current batch
-        reward_clip : bool, optional
-            Not used here, kept for consistency with other agents
-
-        Returns
-        -------
-        error : list
-            The current loss (total loss, classification loss, entropy)
-        """
-        # in policy gradient, only complete episodes are used for training
-        s, a, r, _, _, _ = self._buffer.sample(self._buffer.get_current_size())
-        # unlike DQN, the discounted reward is not estimated but true one
-        # we have defined custom policy graident loss function above
-        # use that to train to agent model
-        # normzlize the rewards for training stability
-        if (normalize_rewards):
-            r = (r - np.mean(r)) / (np.std(r) + 1e-8)
-        target = np.multiply(a, r)
-        loss = actor_loss_update(self._prepare_input(s), target, self._model,
-                                 self._actor_optimizer, beta=beta, num_games=num_games)
-        return loss[0] if len(loss) == 1 else loss
-
-
-class AdvantageActorCriticAgent(PolicyGradientAgent):
-    """This agent uses the Advantage Actor Critic method to train
-    the reinforcement learning agent, we will use Q actor critic here
-
-    Attributes
-    ----------
-    _action_values_model : Tensorflow Graph
-        Contains the network for the action values calculation model
-    _actor_update : function
-        Custom function to prepare the 
-    """
-
+class PolicyGradientAgentTorch(DeepQLearningAgentTorch):
     def __init__(self, board_size=10, frames=4, buffer_size=10000,
                  gamma=0.99, n_actions=3, use_target_net=True,
                  version=''):
-        DeepQLearningAgent.__init__(self, board_size=board_size, frames=frames,
-                                    buffer_size=buffer_size, gamma=gamma,
-                                    n_actions=n_actions, use_target_net=use_target_net,
-                                    version=version)
-        self._optimizer = tf.keras.optimizers.RMSprop(5e-4)
-
-    def _agent_model(self):
-        """Returns the models which evaluate prob logits and action values 
-        for a given state input, Model is compiled in a different function
-        Overrides parent
-        
-        Returns
-        -------
-        model_logits : TensorFlow Graph
-            A2C model graph for action logits
-        model_full : TensorFlow Graph
-            A2C model complete graph
-        """
-        input_board = Input((self._board_size, self._board_size, self._n_frames,))
-        x = Conv2D(16, (3, 3), activation='relu', data_format='channels_last')(input_board)
-        x = Conv2D(32, (3, 3), activation='relu', data_format='channels_last')(x)
-        x = Flatten()(x)
-        x = Dense(64, activation='relu', name='dense')(x)
-        action_logits = Dense(self._n_actions, activation='linear', name='action_logits')(x)
-        state_values = Dense(1, activation='linear', name='state_values')(x)
-
-        model_logits = Model(inputs=input_board, outputs=action_logits)
-        model_full = Model(inputs=input_board, outputs=[action_logits, state_values])
-        model_values = Model(inputs=input_board, outputs=state_values)
-        # updates are calculated in the train_agent function
-
-        return model_logits, model_full, model_values
+        super(PolicyGradientAgentTorch, self).__init__(board_size=board_size, frames=frames, buffer_size=buffer_size,
+                                                       gamma=gamma, n_actions=n_actions, use_target_net=use_target_net,
+                                                       version=version)
+        self.reset_models()
 
     def reset_models(self):
-        """ Reset all the models by creating new graphs"""
-        self._model, self._full_model, self._values_model = self._agent_model()
+        self._model = self._agent_model()
+        self._learning_rate = 0.001
+        self._device = torch.device('cpu')
+        self._optimizer = torch.optim.Adam(self._model.parameters(), self._learning_rate)
         if (self._use_target_net):
-            _, _, self._target_net = self._agent_model()
+            self._target_net = self._agent_model()
             self.update_target_net()
 
-    def save_model(self, file_path='', iteration=None):
-        """Save the current models to disk using tensorflow's
-        inbuilt save model function (saves in h5 format)
-        saving weights instead of model as cannot load compiled
-        model with any kind of custom object (loss or metric)
-        
-        Parameters
-        ----------
-        file_path : str, optional
-            Path where to save the file
-        iteration : int, optional
-            Iteration number to tag the file name with, if None, iteration is 0
-        """
-        if (iteration is not None):
-            assert isinstance(iteration, int), "iteration should be an integer"
-        else:
-            iteration = 0
-        self._model.save_weights("{}/model_{:04d}.h5".format(file_path, iteration))
-        self._full_model.save_weights("{}/model_{:04d}_full.h5".format(file_path, iteration))
-        if (self._use_target_net):
-            self._values_model.save_weights("{}/model_{:04d}_values.h5".format(file_path, iteration))
-            self._target_net.save_weights("{}/model_{:04d}_target.h5".format(file_path, iteration))
+    def _agent_model(self):
+        model = awd.CNN()
+        model.fc = nn.Linear(1280, self._n_actions)
+        return model
 
-    def load_model(self, file_path='', iteration=None):
-        """ load any existing models, if available """
-        """Load models from disk using tensorflow's
-        inbuilt load model function (model saved in h5 format)
-        
-        Parameters
-        ----------
-        file_path : str, optional
-            Path where to find the file
-        iteration : int, optional
-            Iteration number the file is tagged with, if None, iteration is 0
+    def _prepare_input(self, board):
+        if (board.ndim == 3):
+            board = board.reshape((1,) + self._input_shape)
+        board = self._normalize_board(board.copy())
+        return board.copy()
 
-        Raises
-        ------
-        FileNotFoundError
-            The file is not loaded if not found and an error message is printed,
-            this error does not affect the functioning of the program
-        """
-        if (iteration is not None):
-            assert isinstance(iteration, int), "iteration should be an integer"
-        else:
-            iteration = 0
-        self._model.load_weights("{}/model_{:04d}.h5".format(file_path, iteration))
-        self._full_model.load_weights("{}/model_{:04d}_full.h5".format(file_path, iteration))
-        if (self._use_target_net):
-            self._values_model.load_weights("{}/model_{:04d}_values.h5".format(file_path, iteration))
-            self._target_net.load_weights("{}/model_{:04d}_target.h5".format(file_path, iteration))
+    def get_action_proba(self, board, values=None):
+        model_outputs = self._get_model_outputs(board, self._model)
+        action_prob = nn.functional.softmax(model_outputs, dim=-1)
+        return action_prob.detach().numpy()
 
-    def update_target_net(self):
-        """Update the weights of the target network, which is kept
-        static for a few iterations to stabilize the other network.
-        This should not be updated very frequently
-        """
-        if (self._use_target_net):
-            self._target_net.set_weights(self._values_model.get_weights())
+    def move(self, board, legal_moves, value=None):
+        model_outputs = self._get_model_outputs(board, self._model)
+        action_prob = nn.functional.softmax(model_outputs, dim=-1)
+        action = torch.multinomial(action_prob, num_samples=1).squeeze().detach().numpy()
+        return action
 
-    def train_agent(self, batch_size=32, beta=0.001, normalize_rewards=False,
-                    num_games=1, reward_clip=False):
-        """Train the model by sampling from buffer and return the error
-        The buffer is assumed to contain all states of a finite set of games
-        and is fully sampled from the buffer
-        Overrides parent
-        
-        Parameters
-        ----------
-        batch_size : int, optional
-            Not used here, kept for consistency with other agents
-        beta : float, optional
-            The weight for the policy gradient entropy loss
-        normalize_rewards : bool, optional
-            Whether to normalize rewards for stable training
-        num_games : int, optional
-            Not used here, kept for consistency with other agents
-        reward_clip : bool, optional
-            Not used here, kept for consistency with other agents
-
-        Returns
-        -------
-        error : list
-            The current loss (total loss, actor loss, critic loss)
-        """
-        # in policy gradient, only one complete episode is used for training
-        s, a, r, next_s, done, _ = self._buffer.sample(self._buffer.get_current_size())
-        s_prepared = self._prepare_input(s)
-        next_s_prepared = self._prepare_input(next_s)
-        # unlike DQN, the discounted reward is not estimated
-        # we have defined custom actor and critic losses functions above
-        # use that to train to agent model
-
-        # normzlize the rewards for training stability, does not work in practice
-        if (normalize_rewards):
-            if ((r == r[0][0]).sum() == r.shape[0]):
-                # std dev is zero
-                r -= r
-            else:
-                r = (r - np.mean(r)) / np.std(r)
-
+    def train_agent(self, batch_size=32, num_games=1, reward_clip=False):
+        s, a, r, next_s, done, legal_moves = self._buffer.sample(batch_size)
         if (reward_clip):
             r = np.sign(r)
 
-        # calculate V values
-        if (self._use_target_net):
-            next_s_pred = self._target_net.predict_on_batch(next_s_prepared)
-        else:
-            next_s_pred = self._values_model.predict_on_batch(next_s_prepared)
-        s_pred = self._values_model.predict_on_batch(s_prepared)
+        # Calculate discounted rewards and normalize them
+        discounted_rewards = np.zeros((batch_size,))
+        total_reward = 0
+        for i in range(batch_size - 1, -1, -1):
+            total_reward = r[i] + self._gamma * total_reward * (1 - done[i])
+            discounted_rewards[i] = total_reward
+        discounted_rewards -= np.mean(discounted_rewards)
+        discounted_rewards /= np.std(discounted_rewards) + 1e-10
 
-        # prepare target
-        future_reward = self._gamma * next_s_pred * (1 - done)
-        # calculate target for actor (uses advantage), similar to Policy Gradient
-        advantage = a * (r + future_reward - s_pred)
+        # Get the model's action probability distribution for each state
+        model_outputs = self._get_model_outputs(s, self._model)
+        action_prob = nn.functional.softmax(model_outputs, dim=-1)
 
-        # calculate target for critic, simply current reward + future expected reward
-        critic_target = r + future_reward
+        # Compute the loss using the cross entropy loss function
+        log_prob = nn.functional.log_softmax(model_outputs, dim=-1)
+        selected_log_prob = log_prob[np.arange(batch_size), a]
+        loss = -torch.mean(selected_log_prob * torch.from_numpy(discounted_rewards).float().to(self._device))
 
-        model = self._full_model
-        with tf.GradientTape() as tape:
-            model_out = model(s_prepared)
-            policy = tf.nn.softmax(model_out[0])
-            log_policy = tf.nn.log_softmax(model_out[0])
-            # calculate loss
-            J = tf.reduce_sum(tf.multiply(advantage, log_policy)) / num_games
-            entropy = -tf.reduce_sum(tf.multiply(policy, log_policy)) / num_games
-            actor_loss = -J - beta * entropy
-            critic_loss = mean_huber_loss(critic_target, model_out[1])
-            loss = actor_loss + critic_loss
-        # get the gradients
-        grads = tape.gradient(loss, model.trainable_weights)
-        # grads = [tf.clip_by_value(grad, -5, 5) for grad in grads]
-        # run the optimizer
-        self._optimizer.apply_gradients(zip(grads, model.trainable_variables))
+        # Backpropagate the loss
+        self._optimizer.zero_grad()
+        loss.backward()
+        self._optimizer.step()
 
-        loss = [loss.numpy(), actor_loss.numpy(), critic_loss.numpy()]
-        return loss[0] if len(loss) == 1 else loss
+        return loss.item()
+
+
+import torch.nn.functional as F
+from torch.distributions import Categorical
+
+class AdvantageActorCriticAgentTorch(PolicyGradientAgentTorch):
+    def __init__(self, board_size=10, frames=4, buffer_size=10000,
+                 gamma=0.99, n_actions=3, use_target_net=True,
+                 version=''):
+        super(AdvantageActorCriticAgentTorch, self).__init__(board_size=board_size, frames=frames, buffer_size=buffer_size,
+                                                        gamma=gamma, n_actions=n_actions, use_target_net=use_target_net,
+                                                        version=version)
+
+    def _agent_model(self):
+        conv1 = nn.Conv2d(self._frames, 16, kernel_size=3, stride=1, padding=1)
+        conv2 = nn.Conv2d(16, 32, kernel_size=3, stride=1, padding=1)
+        conv3 = nn.Conv2d(32, 64, kernel_size=3, stride=1, padding=1)
+        fc1 = nn.Linear(64 * 10 * 10, 512)
+        actor = nn.Linear(512, self._n_actions)
+        critic = nn.Linear(512, 1)
+        return nn.Sequential(
+            conv1,
+            nn.ReLU(),
+            conv2,
+            nn.ReLU(),
+            conv3,
+            nn.ReLU(),
+            nn.Flatten(),
+            fc1,
+            nn.ReLU(),
+            actor,
+            nn.Softmax(dim=-1),
+            critic
+        )
+
+    def _actor_critic_agent_model(self):
+        model = awd.CNN()
+        model.fc_actor = nn.Linear(1280, self._n_actions)
+        model.fc_critic = nn.Linear(1280, 1)
+        return model
+
+    def get_action_proba(self, board, values=None):
+        model_outputs = self._get_model_outputs(board, self._model)
+        action_prob = F.softmax(model_outputs[:,-self._n_actions:], dim=-1)
+        return action_prob.detach().numpy()
+
+    def move(self, board, legal_moves, value=None):
+        model_outputs = self._get_model_outputs(board, self._model)
+        action_prob = F.softmax(model_outputs[:,-self._n_actions:], dim=-1)
+        dist = Categorical(action_prob)
+        action = dist.sample().item()
+        return action
+
+    def train_agent(self, batch_size=32, num_games=1, reward_clip=False):
+        s, a, r, next_s, done, legal_moves = self._buffer.sample(batch_size)
+        if (reward_clip):
+            r = np.sign(r)
+
+        # Compute the actor and critic losses
+        actor_loss, critic_loss = self._compute_actor_critic_losses(s, a, r, next_s, done)
+
+        # Backpropagate the losses
+        self._actor_optimizer.zero_grad()
+        actor_loss.backward()
+        self._actor_optimizer.step()
+
+        self._critic_optimizer.zero_grad()
+        critic_loss.backward()
+        self._critic_optimizer.step()
+
+        return actor_loss.item(), critic_loss.item()
+
+    def _compute_actor_critic_losses(self, s, a, r, next_s, done):
+        # Convert numpy arrays to tensors
+        s = torch.from_numpy(s).float().to(self._device)
+        a = torch.from_numpy(a).long().to(self._device)
+        r = torch.from_numpy(r).float().to(self._device)
+        next_s = torch.from_numpy(next_s).float().to(self._device)
+        done = torch.from_numpy(done).float().to(self._device)
+
+        # Compute critic target
+        with torch.no_grad():
+            critic_target = r + self._gamma * self._target_net(next_s).detach() * (1 - done)
+        critic_target = critic_target.unsqueeze(1)
+
+        # Compute critic loss
+        critic_output = self._model.critic_forward(s)
+        critic_loss = nn.functional.mse_loss(critic_output, critic_target)
+
+        # Compute actor loss
+        actor_output = self._model.actor_forward(s)
+        log_probs = nn.functional.log_softmax(actor_output, dim=-1)
+        selected_log_probs = log_probs[range(len(a)), a]
+        advantages = critic_target - critic_output.detach()
+        actor_loss = -torch.mean(selected_log_probs * advantages)
+
+        return actor_loss, critic_loss
+
+
 
 
 class HamiltonianCycleAgent(Agent):
