@@ -3,7 +3,7 @@
 Code for training a Deep Reinforcement Learning agent to play the game of Snake.
 The agent takes 2 frames of the game as input (image) and predicts the action values for
 the next action to take. The task was to translate the code from TensorFlow to PyTorch
-***199000
+***
 Sample games from the best performing agent: [Mr.199000](../models_torch/v17.1/model_199000.pt)<br>
 <img width="400" height="400" src="https://github.com/jonasthinn/GA2/blob/main/images2/game_visual_v17.1_199000_14_ob_0.gif" alt="model v17.1 agent" ><
 ***
